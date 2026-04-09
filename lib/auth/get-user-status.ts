@@ -1,8 +1,10 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export type UserStatus = "active" | "withdrawn" | "blocked" | "not_found";
 
 export async function getUserStatus(clerkUserId: string): Promise<UserStatus> {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { data, error } = await supabaseAdmin
     .from("users")
     .select("status")

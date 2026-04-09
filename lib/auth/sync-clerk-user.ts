@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 // Clerk Webhook payload에서 공통으로 쓰는 타입 정의
 interface ClerkEmailAddress {
@@ -55,6 +55,7 @@ export async function handleUserCreated(
   payload: ClerkUserPayload,
   eventAt: Date
 ) {
+  const supabaseAdmin = getSupabaseAdmin();
   const email = extractEmail(payload);
   if (!email) {
     console.error("[Webhook] user.created: 이메일 없음, 처리 중단", {
@@ -119,6 +120,7 @@ export async function handleUserUpdated(
   payload: ClerkUserPayload,
   eventAt: Date
 ) {
+  const supabaseAdmin = getSupabaseAdmin();
   const email = extractEmail(payload);
   if (!email) {
     console.error("[Webhook] user.updated: 이메일 없음, 처리 중단", {
@@ -195,6 +197,7 @@ export async function handleUserDeleted(
   clerkUserId: string,
   eventAt: Date
 ) {
+  const supabaseAdmin = getSupabaseAdmin();
   const { data: existing } = await supabaseAdmin
     .from("users")
     .select("id, last_clerk_event_at")
