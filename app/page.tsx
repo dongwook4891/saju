@@ -71,7 +71,7 @@ export default function Home() {
               id="birthDate"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black text-gray-900 placeholder:text-gray-500"
             />
           </div>
 
@@ -80,11 +80,13 @@ export default function Home() {
               출생일시
             </label>
             <input
-              type="time"
+              type="text"
               id="birthTime"
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+              placeholder="00:00"
+              maxLength={5}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black text-gray-900 placeholder:text-gray-500"
             />
           </div>
 
