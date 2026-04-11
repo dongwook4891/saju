@@ -224,17 +224,12 @@ export async function handleUserDeleted(
     return;
   }
 
-  // row 삭제하지 않고 withdrawn으로 변경, clerk_user_id는 NULL
+  // 회원탈퇴 시 DB에서 완전히 삭제
   const { error } = await supabaseAdmin
     .from("users")
-    .update({
-      status: "withdrawn",
-      clerk_user_id: null,
-      updated_at: new Date().toISOString(),
-      last_clerk_event_at: eventAt.toISOString(),
-    })
+    .delete()
     .eq("id", existing.id);
 
-  if (error) console.error("[Webhook] user.deleted update 실패", error);
-  else console.log("[Webhook] user.deleted: withdrawn 처리 완료", { clerkUserId });
+  if (error) console.error("[Webhook] user.deleted delete 실패", error);
+  else console.log("[Webhook] user.deleted: DB에서 삭제 완료", { clerkUserId });
 }
