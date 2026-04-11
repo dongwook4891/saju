@@ -2,6 +2,16 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 
+async function getCurrentUserEmail(userId: string) {
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+
+  return (
+    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ??
+    null
+  );
+}
+
 // 생년월일/출생일시 저장
 export async function POST(request: Request) {
   try {
@@ -41,13 +51,7 @@ export async function POST(request: Request) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-
-    // Clerk에서 이메일 가져오기
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const email = user.emailAddresses.find(
-      (e) => e.id === user.primaryEmailAddressId
-    )?.emailAddress;
+    const email = await getCurrentUserEmail(userId);
 
     if (!email) {
       return NextResponse.json(
@@ -56,27 +60,100 @@ export async function POST(request: Request) {
       );
     }
 
-    // UPSERT: row가 없으면 INSERT, 있으면 UPDATE
+    const now = new Date().toISOString();
+
+    const { data: existingByClerkId, error: findByClerkError } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("clerk_user_id", userId)
+      .maybeSingle();
+
+    if (findByClerkError) {
+      console.error("[API] birth-info clerk_user_id 조회 실패:", findByClerkError);
+      return NextResponse.json(
+        { error: "Failed to find user info" },
+        { status: 500 }
+      );
+    }
+
+    if (existingByClerkId) {
+      const { error } = await supabaseAdmin
+        .from("users")
+        .update({
+          email,
+          birth_date: birthDate,
+          birth_hour: hour,
+          birth_minute: minute,
+          updated_at: now,
+        })
+        .eq("id", existingByClerkId.id);
+
+      if (error) {
+        console.error("[API] birth-info clerk_user_id update 실패:", error);
+        return NextResponse.json(
+          { error: "Failed to save birth info" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    const { data: existingByEmail, error: findByEmailError } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (findByEmailError) {
+      console.error("[API] birth-info email 조회 실패:", findByEmailError);
+      return NextResponse.json(
+        { error: "Failed to find user info" },
+        { status: 500 }
+      );
+    }
+
+    if (existingByEmail) {
+      // 같은 이메일의 기존 row가 있으면 새 Clerk ID를 다시 연결해서 중복 이메일 충돌을 막는다.
+      const { error } = await supabaseAdmin
+        .from("users")
+        .update({
+          clerk_user_id: userId,
+          email,
+          birth_date: birthDate,
+          birth_hour: hour,
+          birth_minute: minute,
+          updated_at: now,
+        })
+        .eq("id", existingByEmail.id);
+
+      if (error) {
+        console.error("[API] birth-info email reconnect 실패:", error);
+        return NextResponse.json(
+          { error: "Failed to save birth info" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ success: true, reconnectedByEmail: true });
+    }
+
     const { error } = await supabaseAdmin
       .from("users")
-      .upsert(
+      .insert(
         {
           clerk_user_id: userId,
-          email: email,
+          email,
           birth_date: birthDate,
           birth_hour: hour,
           birth_minute: minute,
           status: "active",
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "clerk_user_id",
-          ignoreDuplicates: false,
+          updated_at: now,
         }
       );
 
     if (error) {
-      console.error("[API] birth-info UPSERT 실패:", error);
+      console.error("[API] birth-info INSERT 실패:", error);
       return NextResponse.json(
         { error: "Failed to save birth info" },
         { status: 500 }
@@ -105,9 +182,9 @@ export async function GET() {
     const supabaseAdmin = getSupabaseAdmin();
 
     // 현재 로그인 사용자의 정보 조회
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("users")
-      .select("birth_date, birth_hour, birth_minute")
+      .select("id, clerk_user_id, birth_date, birth_hour, birth_minute")
       .eq("clerk_user_id", userId)
       .maybeSingle();
 
@@ -117,6 +194,44 @@ export async function GET() {
         { error: "Failed to fetch birth info" },
         { status: 500 }
       );
+    }
+
+    if (!data) {
+      const email = await getCurrentUserEmail(userId);
+
+      if (email) {
+        const { data: emailMatchedUser, error: emailMatchError } = await supabaseAdmin
+          .from("users")
+          .select("id, clerk_user_id, birth_date, birth_hour, birth_minute")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (emailMatchError) {
+          console.error("[API] birth-info GET email 조회 실패:", emailMatchError);
+          return NextResponse.json(
+            { error: "Failed to fetch birth info" },
+            { status: 500 }
+          );
+        }
+
+        if (emailMatchedUser) {
+          data = emailMatchedUser;
+
+          if (emailMatchedUser.clerk_user_id !== userId) {
+            const { error: reconnectError } = await supabaseAdmin
+              .from("users")
+              .update({
+                clerk_user_id: userId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", emailMatchedUser.id);
+
+            if (reconnectError) {
+              console.error("[API] birth-info GET email reconnect 실패:", reconnectError);
+            }
+          }
+        }
+      }
     }
 
     // 데이터가 없거나 값이 null이면 빈 객체 반환
