@@ -125,6 +125,13 @@ export async function POST(request: Request) {
       aiResponse = await generateChatResponse(sajuContext, chatHistory, message);
     } catch (aiError) {
       console.error("[API] AI response generation failed:", aiError);
+
+      // AI 생성 실패 시 사용자 메시지 롤백
+      await supabase
+        .from("chat_messages")
+        .delete()
+        .eq("id", userMessage.id);
+
       return NextResponse.json({ error: "Failed to generate AI response", code: "AI_FAILED" }, { status: 500 });
     }
 
@@ -141,6 +148,13 @@ export async function POST(request: Request) {
 
     if (aiMsgError || !aiMessage) {
       console.error("[API] AI message save error:", aiMsgError);
+
+      // AI 메시지 저장 실패 시 사용자 메시지 롤백
+      await supabase
+        .from("chat_messages")
+        .delete()
+        .eq("id", userMessage.id);
+
       return NextResponse.json({ error: "Failed to save AI message" }, { status: 500 });
     }
 

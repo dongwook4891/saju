@@ -91,8 +91,41 @@ export async function GET() {
       .select()
       .single();
 
-    if (createError || !newRoom) {
+    if (createError) {
+      // 동시 요청으로 인한 unique conflict인 경우 기존 방 재조회
+      if (createError.code === '23505') {
+        const { data: existingRoom, error: refetchError } = await supabase
+          .from("chat_rooms")
+          .select("*")
+          .eq("user_id", userData.id)
+          .eq("room_date", today)
+          .maybeSingle();
+
+        if (refetchError) {
+          console.error("[API] Room refetch error:", refetchError);
+          return NextResponse.json({ error: "Failed to fetch room" }, { status: 500 });
+        }
+
+        if (existingRoom) {
+          return NextResponse.json({
+            room: {
+              id: existingRoom.id,
+              userId: existingRoom.user_id,
+              roomDate: existingRoom.room_date,
+              sajuResultId: existingRoom.saju_result_id,
+              createdAt: existingRoom.created_at,
+            },
+            isNew: false,
+          });
+        }
+      }
+
+      // 다른 에러는 500 반환
       console.error("[API] Room creation error:", createError);
+      return NextResponse.json({ error: "Failed to create room" }, { status: 500 });
+    }
+
+    if (!newRoom) {
       return NextResponse.json({ error: "Failed to create room" }, { status: 500 });
     }
 
