@@ -22,8 +22,10 @@ export default function Home() {
   const [lastUserId, setLastUserId] = useState<string | null>(null);
   const timePickerRef = useRef<HTMLInputElement>(null);
 
-  // 오늘 날짜 (YYYY-MM-DD 형식)
-  const today = new Date().toISOString().split('T')[0];
+  // 오늘 날짜 (YYYY-MM-DD 형식, KST 기준)
+  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    .toISOString()
+    .split('T')[0];
 
   // 생년월일 검증 함수
   const validateBirthDate = (value: string): string => {

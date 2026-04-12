@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import { generateChatResponse } from "@/lib/gemini";
+import { getUserWithReconnect } from "@/lib/user-utils";
 import type { SajuFullResult } from "@/lib/types";
 
 /**
@@ -26,15 +27,16 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1. 사용자 정보 조회
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("clerk_user_id", userId)
-      .maybeSingle();
-
-    if (userError || !userData) {
+    // 1. 사용자 정보 조회 - 이메일 fallback 지원
+    let userData;
+    try {
+      userData = await getUserWithReconnect(userId, { select: "id" });
+    } catch (userError) {
       console.error("[API] User fetch error:", userError);
+      return NextResponse.json({ error: "Failed to fetch user info" }, { status: 500 });
+    }
+
+    if (!userData) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 

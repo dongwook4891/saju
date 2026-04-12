@@ -8,7 +8,7 @@ export default function PaymentTempPage() {
   const { resetBirthData } = useInput();
 
   const handleComplete = () => {
-    router.push("/result-temp");
+    router.push("/result");
   };
 
   const handleGoHome = () => {

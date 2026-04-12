@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import { getKSTToday } from "@/lib/date-utils";
 import { generateSajuResult } from "@/lib/gemini";
+import { getUserWithReconnect } from "@/lib/user-utils";
 import type { BirthInfo } from "@/lib/types";
 
 /**
@@ -21,14 +22,13 @@ export async function GET() {
     const supabase = getSupabaseAdmin();
     const today = getKSTToday();
 
-    // 1. 사용자 정보 조회 (사주정보 포함)
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("id, birth_date, birth_hour, birth_minute, profile_updated_at")
-      .eq("clerk_user_id", userId)
-      .maybeSingle();
-
-    if (userError) {
+    // 1. 사용자 정보 조회 (사주정보 포함) - 이메일 fallback 지원
+    let userData;
+    try {
+      userData = await getUserWithReconnect(userId, {
+        select: "id, birth_date, birth_hour, birth_minute, profile_updated_at",
+      });
+    } catch (userError) {
       console.error("[API] User fetch error:", userError);
       return NextResponse.json({ error: "Failed to fetch user info" }, { status: 500 });
     }

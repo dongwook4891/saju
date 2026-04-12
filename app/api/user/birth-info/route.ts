@@ -1,16 +1,7 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { NextResponse } from "next/server";
-
-async function getCurrentUserEmail(userId: string) {
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-
-  return (
-    user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ??
-    null
-  );
-}
+import { getCurrentUserEmail, getUserWithReconnect } from "@/lib/user-utils";
 
 // 생년월일/출생일시 저장
 export async function POST(request: Request) {
@@ -123,6 +114,7 @@ export async function POST(request: Request) {
           birth_date: birthDate,
           birth_hour: hour,
           birth_minute: minute,
+          status: "active", // 재가입 시 상태를 active로 복구
           updated_at: now,
         })
         .eq("id", existingByEmail.id);
@@ -179,59 +171,18 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
-
-    // 현재 로그인 사용자의 정보 조회
-    let { data, error } = await supabaseAdmin
-      .from("users")
-      .select("id, clerk_user_id, birth_date, birth_hour, birth_minute")
-      .eq("clerk_user_id", userId)
-      .maybeSingle();
-
-    if (error) {
+    // 현재 로그인 사용자의 정보 조회 - 이메일 fallback 지원
+    let data;
+    try {
+      data = await getUserWithReconnect(userId, {
+        select: "id, clerk_user_id, birth_date, birth_hour, birth_minute",
+      });
+    } catch (error) {
       console.error("[API] birth-info GET 실패:", error);
       return NextResponse.json(
         { error: "Failed to fetch birth info" },
         { status: 500 }
       );
-    }
-
-    if (!data) {
-      const email = await getCurrentUserEmail(userId);
-
-      if (email) {
-        const { data: emailMatchedUser, error: emailMatchError } = await supabaseAdmin
-          .from("users")
-          .select("id, clerk_user_id, birth_date, birth_hour, birth_minute")
-          .eq("email", email)
-          .maybeSingle();
-
-        if (emailMatchError) {
-          console.error("[API] birth-info GET email 조회 실패:", emailMatchError);
-          return NextResponse.json(
-            { error: "Failed to fetch birth info" },
-            { status: 500 }
-          );
-        }
-
-        if (emailMatchedUser) {
-          data = emailMatchedUser;
-
-          if (emailMatchedUser.clerk_user_id !== userId) {
-            const { error: reconnectError } = await supabaseAdmin
-              .from("users")
-              .update({
-                clerk_user_id: userId,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", emailMatchedUser.id);
-
-            if (reconnectError) {
-              console.error("[API] birth-info GET email reconnect 실패:", reconnectError);
-            }
-          }
-        }
-      }
     }
 
     // 데이터가 없거나 값이 null이면 빈 객체 반환
